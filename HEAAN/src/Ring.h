@@ -32,9 +32,9 @@ public:
 	long logM;
 	long logNh;
 
-	long N;
-	long M;
-	long Nh;
+	long N;//环系统中多项式模次数
+	long M;//指的是M阶分圆多项式（环的多项式模）。这里M=2*N，M是2的幂，所以M阶分圆多项式的次数为M/2=N
+	long Nh;//N/2
 
 	long logQ; ///< log of Q
 	double sigma; ///< standard deviation for Gaussian distribution
@@ -45,10 +45,10 @@ public:
 	ZZ Q; ///< Q corresponds to the highest modulus
 	ZZ QQ; ///< PQ = Q * Q
 
-	ZZ* qpows;
+	ZZ* qpows;//[2^0,2^1,...,2^logQQ=QQ]
 
-	long* rotGroup; ///< auxiliary information about rotation group indexes for batch encoding
-	complex<double>* ksiPows; ///< storing ksi pows for fft calculation
+	long* rotGroup; //用于确定旋转因子次数的辅助数组。rotGroup[i]=5^i mod M < auxiliary information about rotation group indexes for batch encoding
+	complex<double>* ksiPows; //FFT旋转因子，ksiPows[k]=e^(2k*pai*i/M)< storing ksi pows for fft calculation
 
 	map<string, double*> taylorCoeffsMap;
 
@@ -170,11 +170,13 @@ public:
 	//   SAMPLING
 	//----------------------------------------------------------------------------------
 
-
+	//从Z^N中抽取一个N维多项式向量，其中每一个系数都是取自方差为sigma^2的离散高斯分布
 	void sampleGauss(ZZ* res);
-
+	
+	//从{0,1,-1}中抽取一个N维向量，该向量的汉明重量（非0元素个数）=h
 	void sampleHWT(ZZ* res);
 
+	//对于[0,1]的实数rou，从{0,1,-1}中抽取一个N维向量，其中抽取到1和-1的概率为rou/2，抽取到0的概率为1-rou
 	void sampleZO(ZZ* res);
 
 	void sampleUniform2(ZZ* res, long bits);

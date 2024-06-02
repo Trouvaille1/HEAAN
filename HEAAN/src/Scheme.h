@@ -74,6 +74,7 @@ public:
 	 * @param[in] isComplex: there is an option for encryption single real value
 	 * @return message
 	 */
+	 //从C^N编码到R=Z[X]/(X^(N)+1)
 	Plaintext encode(complex<double>* vals, long slots, long logp, long logq);
 
 	Plaintext encode(double* vals, long slots, long logp, long logq);
@@ -114,6 +115,7 @@ public:
 	 * @param[in] msg: message
 	 * @return ciphertext
 	 */
+	 //从R加密到一对R_Q
 	Ciphertext encryptMsg(Plaintext& msg);
 
 	/**
@@ -132,6 +134,7 @@ public:
 	 * @param[in] isComplex: there is an option for encryption single real value
 	 * @return ciphertext
 	 */
+	 //从C^N加密到(Z_q[X]/(X^(2N)+1))^2，因为加密后是一对多项式
 	Ciphertext encrypt(complex<double>* vals, long slots, long logp, long logq);
 
 	Ciphertext encrypt(double* vals, long slots, long logp, long logq);

@@ -69,7 +69,8 @@ Ring::Ring(long logN, long logQ, double sigma, long h) : logN(logN), logQ(logQ),
 							0, -17. / 80640, 0, 31. / 1451520, 0 }));
 
 }
-
+//DIF FFT中，输入是正常序，输出是比特逆序
+//见：https://zck15.github.io/2022/06/05/NTT.html
 void Ring::arrayBitReverse(complex<double>* vals, long n) {
 	for (long i = 1, j = 0; i < n; ++i) {
 		long bit = n >> 1;
@@ -103,26 +104,32 @@ void Ring::EMB(complex<double>* vals, long n) {
 }
 
 void Ring::EMBInvLazy(complex<double>* vals, long n) {
+	//len控制每一层蝶形结构的长度。由于做的是DIF FFT，所以第一层的蝶形结构为整个数组，所以长度的初始值为n
 	for (long len = n; len >= 1; len >>= 1) {
+		//i控制每一层的每一个蝶形结构的起始位置
 		for (long i = 0; i < n; i += len) {
-			long lenh = len >> 1;
-			long lenq = len << 2;
-			long gap = M / lenq;
+			long lenh = len >> 1;//二分之len
+			long lenq = len << 2;//4*len
+			long gap = M / lenq;//每一层需要用到的旋转因子的次数间隔。随着len的变小，gap变大。gap分别为1,2,4,8...   gap=M/(4*len)=(2*N)/(4*len)=N/(2*len)
+			//计算每一个蝶形结构时，是每两个数为一对，所以只需要遍历半个len(lenh)即可
 			for (long j = 0; j < lenh; ++j) {
-				long idx = (lenq - (rotGroup[j] % lenq)) * gap;
+				long idx = (lenq - (rotGroup[j] % lenq)) * gap;//控制旋转因子的次数。这里比较难理解。例如：当len=n时，idx=(4n-(5^j)%(4n))*M/(4n)=M-
+				//DIF NTT对应的蝶形运算形式为：a+b，(a-b)*w
 				complex<double> u = vals[i + j] + vals[i + j + lenh];
 				complex<double> v = vals[i + j] - vals[i + j + lenh];
-				v *= ksiPows[idx];
+				v *= ksiPows[idx];//
 				vals[i + j] = u;
 				vals[i + j + lenh] = v;
 			}
 		}
 	}
-	arrayBitReverse(vals, n);
+	arrayBitReverse(vals, n);//输入是正常序，输出就必须为比特逆序
 }
 
 void Ring::EMBInv(complex<double>* vals, long n) {
 	EMBInvLazy(vals, n);
+	//这里做的是IFFT，最后需要把所有值除以n。IFFT公式见：https://zck15.github.io/2022/06/05/NTT.html
+	//https://zh.wikipedia.org/wiki/%E7%A6%BB%E6%95%A3%E5%82%85%E9%87%8C%E5%8F%B6%E5%8F%98%E6%8D%A2#DFT%E4%B8%8ECFT
 	for (long i = 0; i < n; ++i) {
 		vals[i] /= n;
 	}

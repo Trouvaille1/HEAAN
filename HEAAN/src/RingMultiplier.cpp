@@ -90,28 +90,39 @@ RingMultiplier::RingMultiplier(long logN, long logQ) : logN(logN) {
 	}
 }
 
+//Cooley-Tukey Radix-2 NTT.
+//见论文（这篇论文arxiv版本才有该算法的详细描述，和这个函数的实现一模一样，正式出版的反而没有）P3：https://arxiv.org/pdf/2103.16400
+//原算法论文：https://link.springer.com/chapter/10.1007/978-3-319-48965-0_8
 void RingMultiplier::NTT(uint64_t* a, long index) {
 	long t = N;
 	long logt1 = logN + 1;
-	uint64_t p = pVec[index];
-	uint64_t pInv = pInvVec[index];
+	uint64_t p = pVec[index];//参数a就是rxi，为rx“矩阵”的第i行。p就是这一行代表的CRT的哪个基
+	uint64_t pInv = pInvVec[index];//预计算的该行基的逆元
+	//m是当前层每个小蝴蝶结构的长度的一半。m的变化序列：1,2,4,8,...
 	for (long m = 1; m < N; m <<= 1) {
-		t >>= 1;
-		logt1 -= 1;
+		//进入每一层。
+		t >>= 1;//t既是当前层每个小蝴蝶结构的两个输入之间的坐标的gap，又是当前层蝴蝶结构的个数。t的变化序列：N/2,N/4,...
+		logt1 -= 1;//t1指的是当前层每个小蝴蝶结构两个待处理的数的坐标gap的两倍。即t1=2*t，logt1=logt+1。t1变化序列：N,N/2,N/4,...
+		//遍历当前层每个小蝴蝶结构的前半部分即可（即遍历0~m-1），因为蝴蝶运算每次处理两个点
 		for (long i = 0; i < m; i++) {
-			long j1 = i << logt1;
-			long j2 = j1 + t - 1;
+			long j1 = i << logt1;//j1是当前层第一个蝴蝶结构的起始坐标。
+			long j2 = j1 + t - 1;//j2是当前层最后一个蝴蝶结构的起始坐标。
 			uint64_t W = scaledRootPows[index][m + i];
+			//j1到j2的长度为t，t是当前层蝴蝶结构的个数。循环中对每个蝴蝶结构进行运算
 			for (long j = j1; j <= j2; j++) {
+				//进入当前层当前蝴蝶结构。
+				//DIT NTT的蝴蝶运算部分。每次处理a[j]和a[j+t]两个点。公式为：a[j]=(a[j]+a[j+t]*W) mod p，a[j+t]=(a[j]-a[j+t]*W) mod p
+				//使用了 Barrett Reduction。见：https://en.wikipedia.org/wiki/Barrett_reduction
+				//https://maskray.me/blog/2016-10-03-discrete-fourier-transform
 				uint64_t T = a[j + t];
 				unsigned __int128
-				U = static_cast<unsigned __int128>(T) * W;
-				uint64_t U0 = static_cast<uint64_t>(U);
-				uint64_t U1 = U >> 64;
-				uint64_t Q = U0 * pInv;
+				U = static_cast<unsigned __int128>(T) * W;//U=T*W=a[j + t]*W(U为128位，防止溢出)
+				uint64_t U0 = static_cast<uint64_t>(U);//从128位到64位的截断。U0为U的低64位
+				uint64_t U1 = U >> 64;//U缩小2^64倍.U1为U的高64位
+				uint64_t Q = U0 * pInv;//Q约等于U*p^-1=T*W*p^-1=a[j + t]*W*p^-1
 				unsigned __int128
-				Hx = static_cast<unsigned __int128>(Q) * p;
-				uint64_t H = Hx >> 64;
+				Hx = static_cast<unsigned __int128>(Q) * p;//Hx约等于Q*p=T*W=a[j + t]*W=U
+				uint64_t H = Hx >> 64;//Hx缩小2^64倍。H是Hx的高位部分
 				uint64_t V = U1 < H ? U1 + p - H : U1 - H;
 				a[j + t] = a[j] < V ? a[j] + p - V : a[j] - V;
 				a[j] += V;
@@ -174,20 +185,21 @@ void RingMultiplier::INTT(uint64_t* a, long index) {
 //----------------------------------------------------------------------------------
 
 uint64_t* RingMultiplier::toNTT(ZZ* x, long np) {
-	uint64_t* rx = new uint64_t[np << logN]();
-	NTL_EXEC_RANGE(np, first, last);
+	uint64_t* rx = new uint64_t[np << logN]();//一维数组rx的大小为N*np(13*2^15=425984)。这里的意思是将x表示为中国剩余定理CRT格式，最多有N的系数，每个系数用np个小素数表示
+	NTL_EXEC_RANGE(np, first, last);//并行循环
 	for (long i = first; i < last; ++i) {
-		uint64_t* rxi = rx + (i << logN);
-		uint64_t pi = pVec[i];
+		uint64_t* rxi = rx + (i << logN);//由于使用了并行循环，这是内部block的位置偏移。rxi指向irst到last的小block中的第i行，这一行表示第i个CRT的基，长度为N，表示N个系数都需要和这个基做模运算
+		uint64_t pi = pVec[i];//first到last的小block中，当前需要处理的第i个CRT的基
 		uint64_t pri = prVec[i];
 		long pTwoki = pTwok[i];
-		_ntl_general_rem_one_struct* red_ss = red_ss_array[i];
+		_ntl_general_rem_one_struct* red_ss = red_ss_array[i];//预计算的关于模数的信息
+		//遍历x系数数组。x中每一个系数都会breakdown为CRT形式
 		for (long n = 0; n < N; ++n) {
-			rxi[n] = _ntl_general_rem_one_struct_apply(x[n].rep, pi, red_ss);
+			rxi[n] = _ntl_general_rem_one_struct_apply(x[n].rep, pi, red_ss);//用该函数快速计算 系数 mod pi 的值，然后存入第i行的第n个数。猜测这个函数为NTL的原语函数，所以要用x[n].rep这种底层的数据结构
 		}
-		NTT(rxi, i);
+		NTT(rxi, i);//第i行做NTT（相当于原来系数在CRT下的一个分量的余数结果做NTT）。注意，rxi中的i指的就是第i行（因为rx是一维数组，只能这么表示），所以index就是1
 	}
-	NTL_EXEC_RANGE_END;
+	NTL_EXEC_RANGE_END;////并行循环
 	return rx;
 }
 

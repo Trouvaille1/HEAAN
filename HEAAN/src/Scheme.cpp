@@ -174,13 +174,13 @@ void Scheme::addBootKey(SecretKey& secretKey, long logl, long logp) {
 
 Plaintext Scheme::encode(double* vals, long n, long logp, long logq) {
 	ZZ* mx = new ZZ[ring.N];
-	ring.encode(mx, vals, n, logp + ring.logQ);
+	ring.encode(mx, vals, n, logp + ring.logQ);//编码时需要将原消息放大p*Q倍
 	return Plaintext(mx, logp, logq, ring.N, n);
 }
 
 Plaintext Scheme::encode(complex<double>* vals, long n, long logp, long logq) {
 	ZZ* mx = new ZZ[ring.N];
-	ring.encode(mx, vals, n, logp + ring.logQ);
+	ring.encode(mx, vals, n, logp + ring.logQ);//从代码中看出来，
 	return Plaintext(mx, logp, logq, ring.N, n);
 }
 
@@ -219,27 +219,31 @@ complex<double> Scheme::decodeSingle(Plaintext& msg) {
 }
 
 Ciphertext Scheme::encryptMsg(Plaintext& msg) {
-	ZZ qQ = ring.qpows[msg.logq + ring.logQ];
+	ZZ qQ = ring.qpows[msg.logq + ring.logQ];//明文中的q就是环的Q，所以msg.logq = ring.logQ，所以qQ = Q^2
 
 	ZZ* ex = new ZZ[ring.N];
 	ZZ* ax = new ZZ[ring.N];
 	ZZ* bx = new ZZ[ring.N];
 	ZZ* vx = new ZZ[ring.N];
 
-	ring.sampleZO(vx);
-	Key key = keyMap.at(ENCRYPTION);
+	//《全同态加密——从理论到实践》P165
+	ring.sampleZO(vx);//选取v-<ZO(0.5)
+	Key key = keyMap.at(ENCRYPTION);//公钥pk
 
-	long np = ceil((1 + ring.logQQ + ring.logN + 2)/59.0);
-	ring.multNTT(ax, vx, key.rax, np, qQ);
-	ring.sampleGauss(ex);
-	ring.addAndEqual(ax, ex, qQ);
+	//59=PRIME_BIT_SIZE-1=log2((double)NTL_SP_BOUND)-1
+	//NTL_SP_BOUND在64位机上一般是2^50。见：https://libntl.org/doc/lzz_p.cpp.html
+	long np = ceil((1 + ring.logQQ + ring.logN + 2)/59.0);//默认情况下“pbnd”值为 59.0。如果您使用带有“NTL_ENABLE_AVX_FFT=on”的 NTL，此选项会将小素数大小界限从 60 位降低到 50 位（请参阅https://www.shoup.net/ntl/doc/tour-changes.html）。因此，您需要将设置更改为 49.0。
+	ring.multNTT(ax, vx, key.rax, np, qQ);//v*pk
+	ring.sampleGauss(ex);//抽取e1<-DG()
+	ring.addAndEqual(ax, ex, qQ);//a=v*pk+e1
 
-	ring.multNTT(bx, vx, key.rbx, np, qQ);
-	ring.sampleGauss(ex);
-	ring.addAndEqual(bx, ex, qQ);
+	ring.multNTT(bx, vx, key.rbx, np, qQ);//v*pk
+	ring.sampleGauss(ex);//抽取e0<-DG()
+	ring.addAndEqual(bx, ex, qQ);//v*pk+e0
 
-	ring.addAndEqual(bx, msg.mx, qQ);
+	ring.addAndEqual(bx, msg.mx, qQ);//b=v*pk+m+e0
 
+	//a,b都要缩小Q倍.由于之前乘以了p*Q倍，所以a,b还是扩大了p倍的结果
 	ring.rightShiftAndEqual(ax, ring.logQ);
 	ring.rightShiftAndEqual(bx, ring.logQ);
 
@@ -260,7 +264,7 @@ Plaintext Scheme::decryptMsg(SecretKey& secretKey, Ciphertext& cipher) {
 }
 
 Ciphertext Scheme::encrypt(complex<double>* vals, long n, long logp, long logq) {
-	Plaintext msg = encode(vals, n, logp, logq);
+	Plaintext msg = encode(vals, n, logp, logq);//注意：明文中的q就是环的Q
 	return encryptMsg(msg);
 }
 
@@ -307,8 +311,9 @@ void Scheme::negateAndEqual(Ciphertext& cipher) {
 }
 
 Ciphertext Scheme::add(Ciphertext& cipher1, Ciphertext& cipher2) {
-	ZZ q = ring.qpows[cipher1.logq];
+	ZZ q = ring.qpows[cipher1.logq];//模数为第一个密文的q
 
+	//环的多项式模次数为N，所以环上的多项式的次数不可能超过N，开一个长度为N的数组存储系数即可
 	ZZ* ax = new ZZ[ring.N];
 	ZZ* bx = new ZZ[ring.N];
 
@@ -434,11 +439,12 @@ void Scheme::idivAndEqual(Ciphertext& cipher) {
 }
 
 Ciphertext Scheme::mult(Ciphertext& cipher1, Ciphertext& cipher2) {
-	ZZ q = ring.qpows[cipher1.logq];
-	ZZ qQ = ring.qpows[cipher1.logq + ring.logQ];
+	ZZ q = ring.qpows[cipher1.logq];//cipher1.logq=Q
+	ZZ qQ = ring.qpows[cipher1.logq + ring.logQ];//Q^2
 
-	long np = ceil((2 + cipher1.logq + cipher2.logq + ring.logN + 2)/59.0);
+	long np = ceil((2 + cipher1.logq + cipher2.logq + ring.logN + 2)/59.0);//中国剩余定理CRT基的余数个数
 
+	//将系数用CRT表示。ra1、rb1、ra2、rb2为CRT形式系数序列
 	uint64_t* ra1 = ring.toNTT(cipher1.ax, np);
 	uint64_t* rb1 = ring.toNTT(cipher1.bx, np);
 	uint64_t* ra2 = ring.toNTT(cipher2.ax, np);
@@ -461,7 +467,7 @@ Ciphertext Scheme::mult(Ciphertext& cipher1, Ciphertext& cipher2) {
 
 	np = ceil((cipher1.logq + ring.logQQ + ring.logN + 2)/59.0);
 	uint64_t* raa = ring.toNTT(axax, np);
-	ring.multDNTT(axmult, raa, key.rax, np, qQ);
+	ring.multDNTT(axmult, raa, key.rax, np, qQ);//mult double-CRT.两个参数都是CRT格式
 	ring.multDNTT(bxmult, raa, key.rbx, np, qQ);
 
 	ring.rightShiftAndEqual(axmult, ring.logQ);

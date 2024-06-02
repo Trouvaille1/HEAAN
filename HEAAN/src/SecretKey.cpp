@@ -9,5 +9,5 @@
 
 SecretKey::SecretKey(Ring& ring) : N(ring.N) {
 	sx = new ZZ[N];
-	ring.sampleHWT(sx);
+	ring.sampleHWT(sx);//抽取s<-HWT(h)，私钥为(1,s)，这里省略1
 }
