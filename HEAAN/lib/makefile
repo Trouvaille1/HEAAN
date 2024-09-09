@@ -38,7 +38,7 @@ endif
 # Add inputs and outputs from these tool invocations to the build variables 
 
 # All Target
-all: libHEAAN.a
+all: clean libHEAAN.a
 
 # Tool invocations
 libHEAAN.a: $(OBJS) $(USER_OBJS)

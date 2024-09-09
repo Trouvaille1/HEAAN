@@ -849,6 +849,14 @@ void TestScheme::testWriteAndRead(long logN, long logQ, long logp, long logSlots
 }
 
 
+/*logN: 环的大小（N为多项式环的阶，logN为它的对数值）。
+logp: 明文精度（即小数位精度，以log2表示）。
+logq: 初始的密文模数对数。
+logQ: 扩展后的密文模数对数，用于bootstrapping。
+logSlots: 插槽数的对数（CKKS中的明文向量大小，以2的幂次方表示插槽数）。
+logT: bootstrapping过程中用于处理指数函数的参数。
+*/
+//函数签名为：static void testBootstrap(long logN, long logq, long logQ, long logn, long nu, long logT);
 void TestScheme::testBootstrap(long logN, long logp, long logq, long logQ, long logSlots, long logT) {
 	cout << "!!! START TEST BOOTSTRAP !!!" << endl;
 
@@ -863,24 +871,25 @@ void TestScheme::testBootstrap(long logN, long logp, long logq, long logQ, long 
 	scheme.addBootKey(secretKey, logSlots, logq + 4);
 	timeutils.stop("Key generated");
 
-	long slots = (1 << logSlots);
-	complex<double>* mvec = EvaluatorUtils::randomComplexArray(slots);
+	long slots = (1 << logSlots);//消息向量槽数
+	complex<double>* mvec = EvaluatorUtils::randomComplexArray(slots);//消息向量
 
 	Ciphertext cipher = scheme.encrypt(mvec, slots, logp, logq);
 
 	cout << "cipher logq before: " << cipher.logq << endl;
 
-	scheme.modDownToAndEqual(cipher, logq);
-	scheme.normalizeAndEqual(cipher);
+	scheme.modDownToAndEqual(cipher, logq);//将密文中的两个多项式系数模上所给参数q（跟论文中的ModDown换基好像不太一样）
+	scheme.normalizeAndEqual(cipher);//仅用于bootstrapping中，且只在这里使用一次
 	cipher.logq = logQ;
 	cipher.logp = logq + 4;
 
+	//部分求和
 	timeutils.start("SubSum");
 	for (long i = logSlots; i < ring.logNh; ++i) {
-		Ciphertext rot = scheme.leftRotateFast(cipher, (1 << i));
-		scheme.addAndEqual(cipher, rot);
+		Ciphertext rot = scheme.leftRotateFast(cipher, (1 << i));//r变化序列：slots, slots*2, slots*4, ..., slots*2^(logNh-1)
+		scheme.addAndEqual(cipher, rot);//在不同槽中进行部分求和操作，使得插槽中的数据逐步累加。
 	}
-	scheme.divByPo2AndEqual(cipher, ring.logNh);
+	scheme.divByPo2AndEqual(cipher, ring.logNh);//密文的两个多项式系数除以N/2，且密文模也除以N/2      // bitDown: context.logNh - logSlots
 	timeutils.stop("SubSum");
 
 	timeutils.start("CoeffToSlot");
@@ -888,7 +897,7 @@ void TestScheme::testBootstrap(long logN, long logp, long logq, long logQ, long 
 	timeutils.stop("CoeffToSlot");
 
 	timeutils.start("EvalExp");
-	scheme.evalExpAndEqual(cipher, logT);
+	scheme.evalExpAndEqual(cipher, logT); // bitDown: context.logNh + (logI + logT + 5) * logq + (logI + logT + 6) * logI + logT + 1
 	timeutils.stop("EvalExp");
 
 	timeutils.start("SlotToCoeff");

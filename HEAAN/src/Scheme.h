@@ -24,7 +24,7 @@
 using namespace std;
 using namespace NTL;
 
-static long ENCRYPTION = 0;
+static long ENCRYPTION = 0;//公钥pk
 static long MULTIPLICATION  = 1;
 static long CONJUGATION = 2;
 

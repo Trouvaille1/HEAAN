@@ -23,8 +23,11 @@ RingMultiplier::RingMultiplier(long logN, long logQ) : logN(logN) {
 	N = 1 << logN;
 	long M = N << 1;
 
-	long bound = 2 + logN + 4 * logQ;
-	long nprimes = ceil(bound / 59.0);
+	long bound = 2 + logN + 4 * logQ;//这是对乘法器内部所需模数大小的估计。它结合了环的大小和密文的模数来计算出乘法运算中所需的足够大范围的模数（模数位数的总和）。
+
+	//59是每个质数的位数。NTL库中常用位数为59的质数来处理大整数运算，尤其是乘法。为了支持高效的大数运算，乘法器会使用模数分裂技术，将模数分成多个质数部分来处理。
+	//ceil()计算得到需要多少个这样的59位质数。通过将bound除以59.0，得到质数的数量，并使用 ceil 函数向上取整，确保足够的质数。
+	long nprimes = ceil(bound / 59.0);//CRT中质数数量。
 
 	pVec = new uint64_t[nprimes];
 	prVec = new uint64_t[nprimes];
@@ -38,7 +41,7 @@ RingMultiplier::RingMultiplier(long logN, long logQ) : logN(logN) {
 
 	for (long i = 0; i < nprimes; ++i) {
 		pVec[i] = pPrimesVec[i];
-		red_ss_array[i] = _ntl_general_rem_one_struct_build(pVec[i]);
+		red_ss_array[i] = _ntl_general_rem_one_struct_build(pVec[i]);//这个函数通过预处理模数 pVec[i] 来加速后续的模数还原操作，返回一个结构体
 		pInvVec[i] = inv(pVec[i]);
 		pTwok[i] = (2 * ((long) log2(pVec[i]) + 1));
 		prVec[i] = (static_cast<unsigned __int128>(1) << pTwok[i]) / pVec[i];
@@ -184,6 +187,7 @@ void RingMultiplier::INTT(uint64_t* a, long index) {
 //   FFT
 //----------------------------------------------------------------------------------
 
+//将一个多项式的系数数组x，转换为CRT的NTT格式的多项式系数矩阵rx
 uint64_t* RingMultiplier::toNTT(ZZ* x, long np) {
 	uint64_t* rx = new uint64_t[np << logN]();//一维数组rx的大小为N*np(13*2^15=425984)。这里的意思是将x表示为中国剩余定理CRT格式，最多有N的系数，每个系数用np个小素数表示
 	NTL_EXEC_RANGE(np, first, last);//并行循环
@@ -215,6 +219,7 @@ void RingMultiplier::addNTTAndEqual(uint64_t* ra, uint64_t* rb, long np) {
 	}
 }
 
+//使用CRT将CRT形式下的多项式恢复成普通形式
 void RingMultiplier::reconstruct(ZZ* x, uint64_t* rx, long np, ZZ& mod) {
 	ZZ* pHatnp = pHat[np - 1];
 	uint64_t* pHatInvModpnp = pHatInvModp[np - 1];
@@ -276,19 +281,23 @@ void RingMultiplier::mult(ZZ* x, ZZ* a, ZZ* b, long np, ZZ& mod) {
 	delete[] rx;
 }
 
+//使用NTT、INTT计算多项式乘法，x=a*b
 void RingMultiplier::multNTT(ZZ* x, ZZ* a, uint64_t* rb, long np, ZZ& mod) {
+	//变量名带r的表示CRT矩阵形式
 	uint64_t* ra = new uint64_t[np << logN]();
 	uint64_t* rx = new uint64_t[np << logN]();
 
 	NTL_EXEC_RANGE(np, first, last);
 	for (long i = first; i < last; ++i) {
+		//第i个CRT的基
 		uint64_t* rai = ra + (i << logN);
 		uint64_t* rbi = rb + (i << logN);
 		uint64_t* rxi = rx + (i << logN);
-		uint64_t pi = pVec[i];
-		uint64_t pri = prVec[i];
-		long pTwoki = pTwok[i];
-		_ntl_general_rem_one_struct* red_ss = red_ss_array[i];
+		
+		uint64_t pi = pVec[i];//first到last的小block中，当前需要处理的第i个CRT的基
+		uint64_t pri = prVec[i];//当前需要处理的第i个CRT的基的倒数
+		long pTwoki = pTwok[i];//预计算的2的指数
+		_ntl_general_rem_one_struct* red_ss = red_ss_array[i];//预计算的关于模数的信息
 		for (long n = 0; n < N; ++n) {
 			rai[n] = _ntl_general_rem_one_struct_apply(a[n].rep, pi, red_ss);
 		}
@@ -306,8 +315,10 @@ void RingMultiplier::multNTT(ZZ* x, ZZ* a, uint64_t* rb, long np, ZZ& mod) {
 	delete[] rx;
 }
 
+//两个NTT形式的多项式相乘，最后返回的结果为非NTT形式的多项式。x=a*b
+//mult double NTT
 void RingMultiplier::multDNTT(ZZ* x, uint64_t* ra, uint64_t* rb, long np, ZZ& mod) {
-	uint64_t* rx = new uint64_t[np << logN]();
+	uint64_t* rx = new uint64_t[np << logN]();//NTT形式的结果多项式
 
 	NTL_EXEC_RANGE(np, first, last);
 	for (long i = first; i < last; ++i) {
@@ -319,7 +330,7 @@ void RingMultiplier::multDNTT(ZZ* x, uint64_t* ra, uint64_t* rb, long np, ZZ& mo
 		long pTwoki = pTwok[i];
 		_ntl_general_rem_one_struct* red_ss = red_ss_array[i];
 		for (long n = 0; n < N; ++n) {
-			mulModBarrett(rxi[n], rai[n], rbi[n], pi, pri, pTwoki);
+			mulModBarrett(rxi[n], rai[n], rbi[n], pi, pri, pTwoki);//由于是NTT形式的多项式，做element-wise的乘法即可
 		}
 		INTT(rxi, i);
 	}
@@ -467,6 +478,7 @@ void RingMultiplier::mulMod(uint64_t &r, uint64_t a, uint64_t b, uint64_t m) {
 	r = static_cast<uint64_t>(mul);
 }
 
+//r = a * b mod p
 void RingMultiplier::mulModBarrett(uint64_t& r, uint64_t a, uint64_t b, uint64_t p, uint64_t pr, long twok) {
 	unsigned __int128 mul = static_cast<unsigned __int128>(a) * b;
 	uint64_t atop, abot;

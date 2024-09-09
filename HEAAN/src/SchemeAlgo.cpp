@@ -362,6 +362,7 @@ void SchemeAlgo::fftRaw(Ciphertext* ciphers, const long size, const bool isForwa
 	}
 }
 
+//离散傅里叶变换
 void SchemeAlgo::DFT(Ciphertext* ciphers, const long size) {
 	fftRaw(ciphers, size, true);
 }

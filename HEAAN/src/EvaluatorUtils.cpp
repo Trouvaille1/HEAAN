@@ -86,7 +86,7 @@ ZZ EvaluatorUtils::scaleUpToZZ(const RR& x, const long logp) {
 //   ROTATIONS
 //----------------------------------------------------------------------------------
 
-
+//left rotation of n elements by r slots
 void EvaluatorUtils::leftRotateAndEqual(complex<double>* vals, const long n, const long r) {
 	long rem = r % n;
 	if(rem != 0) {

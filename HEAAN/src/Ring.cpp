@@ -14,6 +14,7 @@
 #include <NTL/vector.h>
 #include <NTL/ZZVec.h>
 #include <NTL/lip.h>
+#include <iostream>
 
 #include "EvaluatorUtils.h"
 #include "BootContext.h"
@@ -153,13 +154,16 @@ void Ring::encode(ZZ* mx, double* vals, long slots, long logp) {
 	delete[] uvals;
 }
 
+//调用方式：ring.encode(mx, vals, n, logp + ring.logQ);//编码时需要将原消息放大p*Q倍
+//将vals放大p倍后编码为大整数系数多项式，它的大整数系数数组为mx
 void Ring::encode(ZZ* mx, complex<double>* vals, long slots, long logp) {
 	complex<double>* uvals = new complex<double> [slots];
 	long i, jdx, idx;
 	copy(vals, vals + slots, uvals);
 
 	long gap = Nh / slots;
-	EMBInv(uvals, slots);
+	EMBInv(uvals, slots);//IFFT
+	//将系数放大p倍后编码为大整数系数多项式
 	for (i = 0, jdx = Nh, idx = 0; i < slots; ++i, jdx += gap, idx += gap) {
 		mx[idx] = EvaluatorUtils::scaleUpToZZ(uvals[i].real(), logp);
 		mx[jdx] = EvaluatorUtils::scaleUpToZZ(uvals[i].imag(), logp);
@@ -192,9 +196,9 @@ void Ring::addBootContext(long logSlots, long logp) {
 		long dslots = slots << 1;
 		long logk = logSlots >> 1;
 
-		long k = 1 << logk;
+		long k = 1 << logk;//k=slots^(1/2)
 		long i, pos, ki, jdx, idx, deg;
-		long gap = Nh >> logSlots;
+		long gap = Nh >> logSlots;//gap=N/(2*slots)
 
 		long np;
 
@@ -211,8 +215,9 @@ void Ring::addBootContext(long logSlots, long logp) {
 		ZZ* pvec = new ZZ[N];
 		complex<double>* pvals = new complex<double> [dslots];
 
-		double c = 0.25 / M_PI;
-
+		double c = 0.25 / M_PI;//c=1/(4π)
+		
+		//分前N/2和后N/2处理
 		if (logSlots < logNh) {
 			long dgap = gap >> 1;
 			for (ki = 0; ki < slots; ki += k) {
@@ -562,20 +567,24 @@ void Ring::rightShiftAndEqual(ZZ* p, long bits) {
 //   ROTATION & CONJUGATION
 //----------------------------------------------------------------------------------
 
-
+//对多项式p进行左旋转r位，结果存储在res中
+//Automorph.作用在密文的一个多项式上
 void Ring::leftRotate(ZZ* res, ZZ* p, long r) {
-	long pow = rotGroup[r];
+	long pow = rotGroup[r];//pow=5^r mod M   参考https://www.cnblogs.com/quixotiiiiic/p/16630906.html
+	cout << "pow=" << pow << endl;
 	for (long i = 0; i < N; ++i) {
 		long ipow = i * pow;
-		long shift = ipow % M;
+		long shift = ipow % M;//旋转后的新位置
 		if (shift < N) {
-			res[shift] = p[i];
+			res[shift] = p[i];//如果新位置没超过原数组长度N，则直接赋值
 		} else {
-			res[shift - N] = -p[i];
+			res[shift - N] = -p[i];//如果新位置超过了原数组长度N，则在新位置模N的位置上赋值为相反数
 		}
 	}
 }
 
+//共轭。除了第一个元素外，其他元素取负，然后倒序输出
+//e.g. p=[0,1,2,3]  conj(p)=[0,-3,-2,-1]
 void Ring::conjugate(ZZ* res, ZZ* p) {
 	res[0] = p[0];
 	for (long i = 1; i < N; ++i) {

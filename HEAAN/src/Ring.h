@@ -47,8 +47,8 @@ public:
 
 	ZZ* qpows;//[2^0,2^1,...,2^logQQ=QQ]
 
-	long* rotGroup; //用于确定旋转因子次数的辅助数组。rotGroup[i]=5^i mod M < auxiliary information about rotation group indexes for batch encoding
-	complex<double>* ksiPows; //FFT旋转因子，ksiPows[k]=e^(2k*pai*i/M)< storing ksi pows for fft calculation
+	long* rotGroup; //用于确定旋转因子次数的辅助数组。长度为N/2。rotGroup[i]=5^i mod M < auxiliary information about rotation group indexes for batch encoding
+	complex<double>* ksiPows; //FFT旋转因子，ksiPows[k]=e^(2kπi/M)< storing ksi pows for fft calculation
 
 	map<string, double*> taylorCoeffsMap;
 

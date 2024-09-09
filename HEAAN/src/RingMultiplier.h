@@ -23,7 +23,7 @@ public:
 
 	uint64_t* pVec;
 	uint64_t* prVec;
-	long* pTwok;
+	long* pTwok;//长度为nprimes
 	uint64_t* pInvVec;
 	uint64_t** scaledRootPows;
 	uint64_t** scaledRootInvPows;

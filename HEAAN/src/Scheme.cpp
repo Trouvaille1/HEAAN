@@ -35,7 +35,7 @@ void Scheme::addEncKey(SecretKey& secretKey) {
 	delete[] bx;
 	delete[] ex;
 
-	keyMap.insert(pair<long, Key>(ENCRYPTION, Key(rax, rbx)));
+	keyMap.insert(pair<long, Key>(ENCRYPTION, Key(rax, rbx)));//公钥pk有两个多项式系数数组，一个是rax，一个是rbx
 }
 
 void Scheme::addMultKey(SecretKey& secretKey) {
@@ -155,7 +155,7 @@ void Scheme::addBootKey(SecretKey& secretKey, long logl, long logp) {
 	addLeftRotKeys(secretKey);
 
 	long loglh = logl/2;
-	long k = 1 << loglh;
+	long k = 1 << loglh;//k=slots/2
 	long m = 1 << (logl - loglh);
 
 	for (long i = 1; i < k; ++i) {
@@ -179,9 +179,9 @@ Plaintext Scheme::encode(double* vals, long n, long logp, long logq) {
 }
 
 Plaintext Scheme::encode(complex<double>* vals, long n, long logp, long logq) {
-	ZZ* mx = new ZZ[ring.N];
-	ring.encode(mx, vals, n, logp + ring.logQ);//从代码中看出来，
-	return Plaintext(mx, logp, logq, ring.N, n);
+	ZZ* mx = new ZZ[ring.N];//大小为N的多项式系数数组
+	ring.encode(mx, vals, n, logp + ring.logQ);//编码时需要将原消息放大p*Q倍，存入多项式大整数系数数组mx中
+	return Plaintext(mx, logp, logq, ring.N, n);//明文中存储了多项式系数数组mx，以及logp、logq、N、n
 }
 
 complex<double>* Scheme::decode(Plaintext& msg) {
@@ -232,18 +232,22 @@ Ciphertext Scheme::encryptMsg(Plaintext& msg) {
 
 	//59=PRIME_BIT_SIZE-1=log2((double)NTL_SP_BOUND)-1
 	//NTL_SP_BOUND在64位机上一般是2^50。见：https://libntl.org/doc/lzz_p.cpp.html
-	long np = ceil((1 + ring.logQQ + ring.logN + 2)/59.0);//默认情况下“pbnd”值为 59.0。如果您使用带有“NTL_ENABLE_AVX_FFT=on”的 NTL，此选项会将小素数大小界限从 60 位降低到 50 位（请参阅https://www.shoup.net/ntl/doc/tour-changes.html）。因此，您需要将设置更改为 49.0。
-	ring.multNTT(ax, vx, key.rax, np, qQ);//v*pk
+	//CRT中素数个数
+	//小素数的大小最大为60位
+	long np = ceil((1 + ring.logQQ + ring.logN + 2)/59.0);//HEAAN库中readme:默认情况下“pbnd”值为 59.0。如果您使用带有“NTL_ENABLE_AVX_FFT=on”的 NTL，此选项会将小素数大小界限从 60 位降低到 50 位（请参阅https://www.shoup.net/ntl/doc/tour-changes.html）。因此，您需要将设置更改为 49.0。
+	
+	//公钥pk有两个多项式系数数组，一个是rax，一个是rbx
+	ring.multNTT(ax, vx, key.rax, np, qQ);//a=v*pk
 	ring.sampleGauss(ex);//抽取e1<-DG()
 	ring.addAndEqual(ax, ex, qQ);//a=v*pk+e1
-
-	ring.multNTT(bx, vx, key.rbx, np, qQ);//v*pk
+	ring.multNTT(bx, vx, key.rbx, np, qQ);//b=v*pk
 	ring.sampleGauss(ex);//抽取e0<-DG()
-	ring.addAndEqual(bx, ex, qQ);//v*pk+e0
+	ring.addAndEqual(bx, ex, qQ);//b=v*pk+e0
 
 	ring.addAndEqual(bx, msg.mx, qQ);//b=v*pk+m+e0
 
 	//a,b都要缩小Q倍.由于之前乘以了p*Q倍，所以a,b还是扩大了p倍的结果
+	//所以，最终结果为加密为密文，其中a=v*pk+e1，b=v*pk+m+e0
 	ring.rightShiftAndEqual(ax, ring.logQ);
 	ring.rightShiftAndEqual(bx, ring.logQ);
 
@@ -263,9 +267,10 @@ Plaintext Scheme::decryptMsg(SecretKey& secretKey, Ciphertext& cipher) {
 	return Plaintext(mx, cipher.logp, cipher.logq, cipher.N, cipher.n);
 }
 
+//先编码，再加密 
 Ciphertext Scheme::encrypt(complex<double>* vals, long n, long logp, long logq) {
 	Plaintext msg = encode(vals, n, logp, logq);//注意：明文中的q就是环的Q
-	return encryptMsg(msg);
+	return encryptMsg(msg);//将明文加密为密文
 }
 
 Ciphertext Scheme::encrypt(double* vals, long n, long logp, long logq) {
@@ -460,13 +465,14 @@ Ciphertext Scheme::mult(Ciphertext& cipher1, Ciphertext& cipher2) {
 	ring.addNTTAndEqual(ra2, rb2, np);
 	ring.multDNTT(axbx, ra1, ra2, np, q);
 
-	Key key = keyMap.at(MULTIPLICATION);
+	Key key = keyMap.at(MULTIPLICATION);//应该是KeySwitch Key
 
 	ZZ* axmult = new ZZ[ring.N];
 	ZZ* bxmult = new ZZ[ring.N];
 
 	np = ceil((cipher1.logq + ring.logQQ + ring.logN + 2)/59.0);
 	uint64_t* raa = ring.toNTT(axax, np);
+	//KeySwitch操作。KSKIP
 	ring.multDNTT(axmult, raa, key.rax, np, qQ);//mult double-CRT.两个参数都是CRT格式
 	ring.multDNTT(bxmult, raa, key.rbx, np, qQ);
 
@@ -795,6 +801,8 @@ Ciphertext Scheme::divByPo2(Ciphertext& cipher, long bits) {
 	return Ciphertext(ax, bx, cipher.logp, cipher.logq - bits, cipher.N, cipher.n);
 }
 
+//与reScaleByAndEqual的唯一区别就是密文scale p没减小
+//div by power of 2 and equal.将密文的多项式系数按 2 的幂次除法，并直接更新密文
 void Scheme::divByPo2AndEqual(Ciphertext& cipher, long bits) {
 	ring.rightShiftAndEqual(cipher.ax, bits);
 	ring.rightShiftAndEqual(cipher.bx, bits);
@@ -826,15 +834,17 @@ Ciphertext Scheme::reScaleTo(Ciphertext& cipher, long logq) {
 	return Ciphertext(ax, bx, cipher.logp - dlogq, logq, cipher.N, cipher.n);
 }
 
+//密文多项式系数缩小，且密文模和精度也缩小
+//密文（缩放因子为delta），相乘后缩放因子变为delta^2，所以使用重缩放
 void Scheme::reScaleByAndEqual(Ciphertext& cipher, long dlogq) {
 	ring.rightShiftAndEqual(cipher.ax, dlogq);
 	ring.rightShiftAndEqual(cipher.bx, dlogq);
 	cipher.logq -= dlogq;
-	cipher.logp -= dlogq;
+	cipher.logp -= dlogq;//理解为：做了除法（即倒数的乘法），所以精度（是否是SEAL库中的level）也要缩小
 }
 
 void Scheme::reScaleToAndEqual(Ciphertext& cipher, long logq) {
-	long dlogq = cipher.logq - logq;
+	long dlogq = cipher.logq - logq;//需要缩小的倍数的对数
 	ring.rightShiftAndEqual(cipher.ax, dlogq);
 	ring.rightShiftAndEqual(cipher.bx, dlogq);
 	cipher.logq = logq;
@@ -851,6 +861,7 @@ Ciphertext Scheme::modDownBy(Ciphertext& cipher, long dlogq) {
 	return Ciphertext(ax, bx, cipher.logp, cipher.logq - dlogq, cipher.N, cipher.n);
 }
 
+//密文多项式系数做模运算，且密文模缩小，精度不变
 void Scheme::modDownByAndEqual(Ciphertext& cipher, long dlogq) {
 	ZZ q = ring.qpows[cipher.logq - dlogq];
 	ring.modAndEqual(cipher.ax, q);
@@ -870,7 +881,7 @@ Ciphertext Scheme::modDownTo(Ciphertext& cipher, long logq) {
 }
 
 void Scheme::modDownToAndEqual(Ciphertext& cipher, long logq) {
-	ZZ q = ring.qpows[logq];
+	ZZ q = ring.qpows[logq];//密文模q
 	cipher.logq = logq;
 	ring.modAndEqual(cipher.ax, q);
 	ring.modAndEqual(cipher.bx, q);
@@ -902,6 +913,7 @@ Ciphertext Scheme::leftRotateFast(Ciphertext& cipher, long r) {
 	ring.multDNTT(ax, rarot, key.rax, np, qQ);
 	ring.multDNTT(bx, rarot, key.rbx, np, qQ);
 
+	//除以Q
 	ring.rightShiftAndEqual(ax, ring.logQ);
 	ring.rightShiftAndEqual(bx, ring.logQ);
 
@@ -914,6 +926,7 @@ Ciphertext Scheme::leftRotateFast(Ciphertext& cipher, long r) {
 	return Ciphertext(ax, bx, cipher.logp, cipher.logq, cipher.N, cipher.n);
 }
 
+//对密文旋转的快速算法，这里的r必须是2的幂次方 所有旋转函数都会调用这个函数
 void Scheme::leftRotateFastAndEqual(Ciphertext& cipher, long r) {
 	ZZ q = ring.qpows[cipher.logq];
 	ZZ qQ = ring.qpows[cipher.logq + ring.logQ];
@@ -921,20 +934,29 @@ void Scheme::leftRotateFastAndEqual(Ciphertext& cipher, long r) {
 	ZZ* bxrot = new ZZ[ring.N];
 	ZZ* axrot = new ZZ[ring.N];
 
+	//对密文的两个多项式进行旋转（Automorph）
 	ring.leftRotate(bxrot, cipher.bx, r);
 	ring.leftRotate(axrot, cipher.ax, r);
 
 	Key key = leftRotKeyMap.at(r);
 
 	long np = ceil((cipher.logq + ring.logQQ + ring.logN + 2)/59.0);
-	uint64_t* rarot = ring.toNTT(axrot, np);
+	uint64_t* rarot = ring.toNTT(axrot, np);//旋转后的NTT格式的ax
+	//multDNTT返回的是非NTT的结果。
+	//keySwitch InnerProduct(KSKIP)操作（将多项式和key的两个多项式做内积）。在KeySwitch过程中，密文模从P提升到P*Q，其中P是"extension limbs"的乘积。P*Q是保证安全的最大模数
+	//
+	//(FAB那篇论文有详细解释)
 	ring.multDNTT(cipher.ax, rarot, key.rax, np, qQ);
 	ring.multDNTT(cipher.bx, rarot, key.rbx, np, qQ);
 
+	//ModDown
 	ring.rightShiftAndEqual(cipher.ax, ring.logQ);
 	ring.rightShiftAndEqual(cipher.bx, ring.logQ);
 
+	//最终,ax=rarot*key.rax/Q , bx=rarot*key.rbx/Q+bxrot.对应论文"Does Fully Homomorphic Encryption  Need Compute Acceleration?"的Algorithm 4,HRotate
+	//return (u,v+b_rot)
 	ring.addAndEqual(cipher.bx, bxrot, q);
+
 
 	delete[] bxrot;
 	delete[] axrot;
@@ -957,9 +979,12 @@ Ciphertext Scheme::leftRotate(Ciphertext& cipher, long r) {
 	return res;
 }
 
+//密文左旋r位.
+//对r的二进制位逐位处理，通过调用leftRotateFastAndEqual实现
 void Scheme::leftRotateAndEqual(Ciphertext& cipher, long r) {
 	long rem = r % cipher.n;
-	long logr = log2((double)rem) + 1;
+	long logr = log2((double)rem) + 1;//logr是rem的二进制位数
+	//对rem的二进制位逐位处理
 	for (long i = 0; i < logr; ++i) {
 		if(bit(rem, i)) {
 			leftRotateFastAndEqual(cipher, (1 << i));
@@ -1048,27 +1073,31 @@ void Scheme::conjugateAndEqual(Ciphertext& cipher) {
 //----------------------------------------------------------------------------------
 
 
+//仅用于bootstrapping中，且只使用一次
 void Scheme::normalizeAndEqual(Ciphertext& cipher) {
 	ZZ q = ring.qpows[cipher.logq];
 
 	for (long i = 0; i < ring.N; ++i) {
+		//结论：对于正整数x，它的位数=log2(x)+1
+		//若ax[i]或bx[i]的位数等于logq，则意味ax[i]或bx[i]非常接近模数q，所以减去q
 		if(NumBits(cipher.ax[i]) == cipher.logq) cipher.ax[i] -= q;
 		if(NumBits(cipher.bx[i]) == cipher.logq) cipher.bx[i] -= q;
 	}
 }
 
+//将密文从系数表示转变为槽表示
 void Scheme::coeffToSlotAndEqual(Ciphertext& cipher) {
 	long slots = cipher.n;
 	long logSlots = log2(slots);
 	long logk = logSlots / 2;
-	long k = 1 << logk;
+	long k = 1 << logk;//k=slot^(1/2) 分块旋转大小
 
-	Ciphertext* rotvec = new Ciphertext[k];
+	Ciphertext* rotvec = new Ciphertext[k];//旋转密文向量
 	rotvec[0] = cipher;
 
 	NTL_EXEC_RANGE(k - 1, first, last);
 	for (long j = first; j < last; ++j) {
-		rotvec[j + 1] = leftRotateFast(rotvec[0], j + 1);
+		rotvec[j + 1] = leftRotateFast(rotvec[0], j + 1);//从[1,slot^(1/2)-1]分别存储原密文左旋[1,slot^(1/2)-1]次的结果
 	}
 	NTL_EXEC_RANGE_END;
 
@@ -1086,6 +1115,7 @@ void Scheme::coeffToSlotAndEqual(Ciphertext& cipher) {
 		addAndEqual(tmpvec[0], tmpvec[j]);
 	}
 	cipher = tmpvec[0];
+	//分块处理
 	for (long ki = k; ki < slots; ki += k) {
 		NTL_EXEC_RANGE(k, first, last);
 		for (long j = first; j < last; ++j) {
@@ -1152,20 +1182,23 @@ void Scheme::slotToCoeffAndEqual(Ciphertext& cipher) {
 	delete[] tmpvec;
 }
 
+
+//使用8项泰勒展开式计算exp(2πx)的值。exp(2πx)≈8/315π^7x^7+ 4/45π^6x^6 + 4/15π^5x^5 + 2/3π^4x^4 + 4/3π^3x^3 + 2π^2x^2 + 2πx + 1
 void Scheme::exp2piAndEqual(Ciphertext& cipher, long logp) {
 	Ciphertext cipher2 = square(cipher);
-	reScaleByAndEqual(cipher2, logp); // cipher2.logq : logq - logp
+	reScaleByAndEqual(cipher2, logp); // cipher2.logq : logq - logp        每次乘法后,密文模对数logq都会消耗一个logp
 
 	Ciphertext cipher4 = square(cipher2);
 	reScaleByAndEqual(cipher4, logp); // cipher4.logq : logq -2logp
 	RR c = 1/(2*Pi);
-	Ciphertext cipher01 = addConst(cipher, c, logp); // cipher01.logq : logq
+	Ciphertext cipher01 = addConst(cipher, c, logp); // cipher01.logq : logq     加法不消耗密文模q
 
 	c = 2*Pi;
 	multByConstAndEqual(cipher01, c, logp);
 	reScaleByAndEqual(cipher01, logp); // cipher01.logq : logq - logp
 
 	c = 3/(2*Pi);
+	//cipher23是后四项：4/3π^3x^3 + 2π^2x^2 + 2πx + 1
 	Ciphertext cipher23 = addConst(cipher, c, logp); // cipher23.logq : logq
 
 	c = 4*Pi*Pi*Pi/3;
@@ -1194,14 +1227,14 @@ void Scheme::exp2piAndEqual(Ciphertext& cipher, long logp) {
 	multAndEqual(cipher, cipher2);
 	reScaleByAndEqual(cipher, logp); // cipher.logq : logq - 2logp
 
-	modDownByAndEqual(cipher45, logp); // cipher45.logq : logq - 2logp
-	addAndEqual(cipher, cipher45); // cipher.logq : logq - 2logp
+	modDownByAndEqual(cipher45, logp); // cipher45.logq : logq - 2logp      此时cipher的密文模为logq-2logp，必须将cipher45的密文模降到logq-2logp,才能做下一步的加法
+	addAndEqual(cipher, cipher45); // cipher.logq : logq - 2logp  
 
 	multAndEqual(cipher, cipher4);
 	reScaleByAndEqual(cipher, logp); // cipher.logq : logq - 3logp
 
-	modDownByAndEqual(cipher23, logp);
-	addAndEqual(cipher, cipher23); // cipher.logq : logq - 3logp
+	modDownByAndEqual(cipher23, logp);//此时cipher的密文模为logq-3logp，必须将cipher23的密文模降到logq-3logp,才能做下一步的加法
+	addAndEqual(cipher, cipher23); // cipher.logq : logq - 3logp   将前4项和后4项加在一起
 }
 
 void Scheme::evalExpAndEqual(Ciphertext& cipher, long logT, long logI) {

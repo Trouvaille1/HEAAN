@@ -16,8 +16,8 @@ int main() {
 
 
 //	TestScheme::testEncrypt(17, 1000, 30, 4);
-//	TestScheme::testEncryptSingle(15, 300, 30);
-	TestScheme::testBasic(16, 1200, 30, 4);
+	// TestScheme::testEncryptSingle(15, 300, 30);
+	// TestScheme::testBasic(16, 1200, 30, 4);
 //	TestScheme::testimult(15, 300, 30, 4);
 
 
@@ -69,8 +69,8 @@ int main() {
 //----------------------------------------------------------------------------------
 
 
-//	TestScheme::testBootstrap(15, 23, 29, 620, 3, 2);
-//	TestScheme::testBootstrapSingleReal(15, 23, 29, 620, 2);
+	TestScheme::testBootstrap(15, 23, 29, 620, 3, 2);
+	// TestScheme::testBootstrapSingleReal(15, 23, 29, 620, 2);
 
 
 //----------------------------------------------------------------------------------
