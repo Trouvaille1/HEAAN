@@ -28,10 +28,10 @@ RingMultiplier::RingMultiplier(long logN, long logQ) : logN(logN) {
 	//59是每个质数的位数。NTL库中常用位数为59的质数来处理大整数运算，尤其是乘法。为了支持高效的大数运算，乘法器会使用模数分裂技术，将模数分成多个质数部分来处理。
 	//ceil()计算得到需要多少个这样的59位质数。通过将bound除以59.0，得到质数的数量，并使用 ceil 函数向上取整，确保足够的质数。
 	long nprimes = ceil(bound / 59.0);//CRT中质数数量。
-
+	cout<<"RingMultiplier中的nprimes="<<nprimes<<endl;
 	pVec = new uint64_t[nprimes];
 	prVec = new uint64_t[nprimes];
-	pTwok = new long[nprimes];
+	pTwok = new long[nprimes];//每个数都一样
 	pInvVec = new uint64_t[nprimes];
 	scaledRootPows = new uint64_t*[nprimes];
 	scaledRootInvPows = new uint64_t*[nprimes];
@@ -104,7 +104,7 @@ void RingMultiplier::NTT(uint64_t* a, long index) {
 	//m是当前层每个小蝴蝶结构的长度的一半。m的变化序列：1,2,4,8,...
 	for (long m = 1; m < N; m <<= 1) {
 		//进入每一层。
-		t >>= 1;//t既是当前层每个小蝴蝶结构的两个输入之间的坐标的gap，又是当前层蝴蝶结构的个数。t的变化序列：N/2,N/4,...
+		t >>= 1;//t既是当前层每个小蝴蝶结构的两个输入之间的坐标的gap，又是当前层蝴蝶结构的个数。t的变化序列：N/2,N/4,...      m*t=512
 		logt1 -= 1;//t1指的是当前层每个小蝴蝶结构两个待处理的数的坐标gap的两倍。即t1=2*t，logt1=logt+1。t1变化序列：N,N/2,N/4,...
 		//遍历当前层每个小蝴蝶结构的前半部分即可（即遍历0~m-1），因为蝴蝶运算每次处理两个点
 		for (long i = 0; i < m; i++) {
@@ -112,22 +112,25 @@ void RingMultiplier::NTT(uint64_t* a, long index) {
 			long j2 = j1 + t - 1;//j2是当前层最后一个蝴蝶结构的起始坐标。
 			uint64_t W = scaledRootPows[index][m + i];
 			//j1到j2的长度为t，t是当前层蝴蝶结构的个数。循环中对每个蝴蝶结构进行运算
-			for (long j = j1; j <= j2; j++) {
+			for (long j = j1; j <= j2; j++) {//j从i*t1到i*t1+t-1
 				//进入当前层当前蝴蝶结构。
 				//DIT NTT的蝴蝶运算部分。每次处理a[j]和a[j+t]两个点。公式为：a[j]=(a[j]+a[j+t]*W) mod p，a[j+t]=(a[j]-a[j+t]*W) mod p
 				//使用了 Barrett Reduction。见：https://en.wikipedia.org/wiki/Barrett_reduction
 				//https://maskray.me/blog/2016-10-03-discrete-fourier-transform
-				uint64_t T = a[j + t];
+				//相当于HEAX论文中的NTT core部分。
+				//首先，使用HEAX论文中Algorithm 1计算v=MulRed(a[j+t],W,W',p)
+				uint64_t T = a[j + t];//                                                         相当于HEAX论文中的x
 				unsigned __int128
-				U = static_cast<unsigned __int128>(T) * W;//U=T*W=a[j + t]*W(U为128位，防止溢出)
-				uint64_t U0 = static_cast<uint64_t>(U);//从128位到64位的截断。U0为U的低64位
-				uint64_t U1 = U >> 64;//U缩小2^64倍.U1为U的高64位
-				uint64_t Q = U0 * pInv;//Q约等于U*p^-1=T*W*p^-1=a[j + t]*W*p^-1
+				U = static_cast<unsigned __int128>(T) * W;//U=T*W=a[j + t]*W(U为128位，防止溢出)   相当于HEAX论文中的x*y
+				uint64_t U0 = static_cast<uint64_t>(U);//从128位到64位的截断。U0为U的低64位          相当于HEAX论文中的z
+				uint64_t U1 = U >> 64;//U缩小2^64倍.U1为U的高64位                                  
+				uint64_t Q = U0 * pInv;//Q约等于U*p^-1=T*W*p^-1=a[j + t]*W*p^-1                  相当于HEAX论文中的y'
 				unsigned __int128
-				Hx = static_cast<unsigned __int128>(Q) * p;//Hx约等于Q*p=T*W=a[j + t]*W=U
-				uint64_t H = Hx >> 64;//Hx缩小2^64倍。H是Hx的高位部分
+				Hx = static_cast<unsigned __int128>(Q) * p;//Hx约等于Q*p=T*W=a[j + t]*W=U        
+				uint64_t H = Hx >> 64;//Hx缩小2^64倍。H是Hx的高位部分                              相当于HEAX论文中的zε
 				uint64_t V = U1 < H ? U1 + p - H : U1 - H;
-				a[j + t] = a[j] < V ? a[j] + p - V : a[j] - V;
+
+				a[j + t] = a[j] < V ? a[j] + p - V : a[j] - V;                                  
 				a[j] += V;
 				if (a[j] > p)
 					a[j] -= p;

@@ -569,6 +569,7 @@ void Ring::rightShiftAndEqual(ZZ* p, long bits) {
 
 //对多项式p进行左旋转r位，结果存储在res中
 //Automorph.作用在密文的一个多项式上
+//rotation的两个步骤：1. automorph;2.Keyswitch
 void Ring::leftRotate(ZZ* res, ZZ* p, long r) {
 	long pow = rotGroup[r];//pow=5^r mod M   参考https://www.cnblogs.com/quixotiiiiic/p/16630906.html
 	cout << "pow=" << pow << endl;

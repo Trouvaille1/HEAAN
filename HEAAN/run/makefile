@@ -1,7 +1,7 @@
 # This sample should be run after make libHEAAN.a file in lib folder
 
 # All Target
-all: clean HEAAN MY_TEST ROTATE_TEST LEFTROTATE_TEST run
+all: clean HEAAN MY_TEST ROTATE_TEST LEFTROTATE_TEST COMPUTE_PARA run
 
 # Tool invocations
 HEAAN:
@@ -32,12 +32,20 @@ LEFTROTATE_TEST:
 	g++ leftRotate_test.cpp -o LEFTROTATE_TEST -L/usr/local/lib ../lib/libHEAAN.a -lntl -lgmp -lm -std=c++11 -O2 -I/../src -pthread
 	@echo 'Finished building target: $@'
 	@echo ' '		
+
+COMPUTE_PARA:
+	@echo 'Building target: $@'
+	@echo 'Invoking: GCC C++ Linker'
+	g++ compute_para.cpp -o COMPUTE_PARA -L/usr/local/lib ../lib/libHEAAN.a -lntl -lgmp -lm -std=c++11 -O2 -I/../src -pthread
+	@echo 'Finished building target: $@'
+	@echo ' '		
 # Other Targets
 clean:
-	rm -rf HEAAN MY_TEST ROTATE_TEST LEFTROTATE_TEST
+	rm -rf HEAAN MY_TEST ROTATE_TEST LEFTROTATE_TEST COMPUTE_PARA
 
 run:
 	# ./HEAAN
 	# ./MY_TEST
-	# ./ROTATE_TEST\
-	./LEFTROTATE_TEST
+	# ./ROTATE_TEST
+	# ./LEFTROTATE_TEST
+	./COMPUTE_PARA

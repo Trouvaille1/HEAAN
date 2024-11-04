@@ -472,7 +472,7 @@ Ciphertext Scheme::mult(Ciphertext& cipher1, Ciphertext& cipher2) {
 
 	np = ceil((cipher1.logq + ring.logQQ + ring.logN + 2)/59.0);
 	uint64_t* raa = ring.toNTT(axax, np);
-	//KeySwitch操作。KSKIP
+	//KeySwitch操作。KSKIP 最后一个参数为我qQ，是否可以理解为KeySwitch操作中的ModUp?
 	ring.multDNTT(axmult, raa, key.rax, np, qQ);//mult double-CRT.两个参数都是CRT格式
 	ring.multDNTT(bxmult, raa, key.rbx, np, qQ);
 
@@ -1090,7 +1090,7 @@ void Scheme::coeffToSlotAndEqual(Ciphertext& cipher) {
 	long slots = cipher.n;
 	long logSlots = log2(slots);
 	long logk = logSlots / 2;
-	long k = 1 << logk;//k=slot^(1/2) 分块旋转大小
+	long k = 1 << logk;//k=slot^(1/2) 分块旋转大小  猜测是 fftIter?
 
 	Ciphertext* rotvec = new Ciphertext[k];//旋转密文向量
 	rotvec[0] = cipher;
@@ -1137,7 +1137,7 @@ void Scheme::slotToCoeffAndEqual(Ciphertext& cipher) {
 	long slots = cipher.n;
 	long logSlots = log2(slots);
 	long logk = logSlots / 2;
-	long k = 1 << logk;
+	long k = 1 << logk;////k=slot^(1/2) 分块旋转大小  猜测是 fftIter?
 
 	Ciphertext* rotvec = new Ciphertext[k];
 	rotvec[0] = cipher;
@@ -1307,6 +1307,7 @@ void Scheme::bootstrapAndEqual(Ciphertext& cipher, long logq, long logQ, long lo
 	}
 
 	divByPo2AndEqual(cipher, ring.logNh); // bitDown: context.logNh - logSlots
+	
 	coeffToSlotAndEqual(cipher);
 	evalExpAndEqual(cipher, logT, logI); // bitDown: context.logNh + (logI + logT + 5) * logq + (logI + logT + 6) * logI + logT + 1
 	slotToCoeffAndEqual(cipher);

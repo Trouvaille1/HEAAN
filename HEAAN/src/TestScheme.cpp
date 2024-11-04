@@ -897,6 +897,7 @@ void TestScheme::testBootstrap(long logN, long logp, long logq, long logQ, long 
 	timeutils.stop("CoeffToSlot");
 
 	timeutils.start("EvalExp");
+	//logT的意思是：this means that we use Taylor approximation in [-1/T,1/T] with double angle fomula
 	scheme.evalExpAndEqual(cipher, logT); // bitDown: context.logNh + (logI + logT + 5) * logq + (logI + logT + 6) * logI + logT + 1
 	timeutils.stop("EvalExp");
 

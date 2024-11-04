@@ -21,13 +21,13 @@ public:
 	long logN;
 	long N;
 
-	uint64_t* pVec;
-	uint64_t* prVec;
+	uint64_t* pVec;//长度为nprimes
+	uint64_t* prVec;//长度为nprimes
 	long* pTwok;//长度为nprimes
-	uint64_t* pInvVec;
-	uint64_t** scaledRootPows;
-	uint64_t** scaledRootInvPows;
-	uint64_t* scaledNInv;
+	uint64_t* pInvVec;//长度为nprimes
+	uint64_t** scaledRootPows;//大小为nprimes*N
+	uint64_t** scaledRootInvPows;//大小为nprimes*N
+	uint64_t* scaledNInv;//长度为nprimes
 	_ntl_general_rem_one_struct** red_ss_array;
 	mulmod_precon_t** coeffpinv_array;
 	ZZ* pProd;

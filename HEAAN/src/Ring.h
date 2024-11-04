@@ -45,10 +45,10 @@ public:
 	ZZ Q; ///< Q corresponds to the highest modulus
 	ZZ QQ; ///< PQ = Q * Q
 
-	ZZ* qpows;//[2^0,2^1,...,2^logQQ=QQ]
+	ZZ* qpows;//[2^0,2^1,...,2^logQQ=QQ] 长度为logQQ + 1
 
 	long* rotGroup; //用于确定旋转因子次数的辅助数组。长度为N/2。rotGroup[i]=5^i mod M < auxiliary information about rotation group indexes for batch encoding
-	complex<double>* ksiPows; //FFT旋转因子，ksiPows[k]=e^(2kπi/M)< storing ksi pows for fft calculation
+	complex<double>* ksiPows; //FFT旋转因子，长度为M+1，ksiPows[k]=e^(2kπi/M)< storing ksi pows for fft calculation
 
 	map<string, double*> taylorCoeffsMap;
 
